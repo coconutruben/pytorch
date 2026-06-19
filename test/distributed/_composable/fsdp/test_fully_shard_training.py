@@ -225,6 +225,25 @@ class TestFullyShardRegisteredParams(FSDPTestMultiThread):
             self._assert_dtensor_params(model.parameters())
             self._assert_same_params(model.parameters(), ref_model.parameters())
 
+    def test_no_grad_forward_reshards_and_clears_post_forward_order(self):
+        device = torch.device(device_type.type, 0)
+        model = nn.Sequential(MLP(8, device), MLP(8, device))
+        for module in model:
+            fully_shard(module, reshard_after_forward=False)
+        fully_shard(model, reshard_after_forward=False)
+        inp = torch.randn((2, 8), device=device_type.type)
+        root_state = model._get_fsdp_state()
+
+        for _ in range(2):
+            with torch.no_grad():
+                model(inp)
+            self.assertEqual(root_state._comm_ctx.post_forward_order, [])
+            for state in root_state._state_ctx.all_states:
+                for fsdp_param_group in state._fsdp_param_groups:
+                    self.assertEqual(fsdp_param_group._post_forward_indices, [])
+                    self.assertTrue(fsdp_param_group.is_sharded)
+            self._assert_dtensor_params(model.parameters())
+
     def test_param_registration_after_backward(self):
         """Tests the parameter registration after backward."""
         device = torch.device(device_type.type, 0)

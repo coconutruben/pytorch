@@ -343,6 +343,8 @@ class FSDPState(_State):
                     self._comm_ctx.all_gather_stream.wait_event(all_gather_state.event)
                     self._comm_ctx.all_gather_state = None  # free the all-gather result
                 self._state_ctx.iter_forward_root = None
+                if not torch.is_grad_enabled():
+                    self._reset_iter_state_impl()
             return self._cast_output_dtype(output)
 
     def _cast_forward_inputs(
@@ -485,6 +487,9 @@ class FSDPState(_State):
             raise RuntimeError(
                 "reset_iter_state must be called on the root FSDP module"
             )
+        self._reset_iter_state_impl()
+
+    def _reset_iter_state_impl(self) -> None:
         current_stream = self._device_handle.current_stream()
         if ag_state := self._comm_ctx.all_gather_state:
             if ag_state.event is not None:
